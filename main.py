@@ -1,52 +1,104 @@
-import os, json
+
+import os
+import json
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
-app=FastAPI(title="InstaWing AI")
-app.mount("/static",StaticFiles(directory="static"),name="static")
+app = FastAPI(title="InstaWing AI")
 
-class Request(BaseModel):
-    profile_notes:str=Field(default="",max_length=1500)
-    latest_message:str=Field(default="",max_length=2000)
-    tone:str=Field(default="flirty but respectful",max_length=80)
+
+class SuggestRequest(BaseModel):
+    profile_notes: str = Field(default="", max_length=1500)
+    latest_message: str = Field(default="", max_length=2000)
+    tone: str = Field(default="flirty but respectful", max_length=80)
+
 
 @app.get("/")
-def home(): return FileResponse("static/index.html")
+def home():
+    return FileResponse("index.html")
+
+
 @app.get("/manifest.json")
-def manifest(): return FileResponse("static/manifest.json",media_type="application/manifest+json")
+def manifest():
+    return FileResponse("manifest.json")
+
+
 @app.get("/sw.js")
-def worker(): return FileResponse("static/sw.js",media_type="application/javascript")
+def worker():
+    return FileResponse("sw.js")
+
+
 @app.get("/health")
-def health(): return {"ok":True}
+def health():
+    return {"ok": True, "service": "InstaWing AI"}
+
 
 @app.post("/api/suggest")
-def suggest(req:Request):
-    key=os.getenv("OPENAI_API_KEY")
-    if not key:
-        if req.latest_message.strip():
-            suggestions=["That’s an interesting take 😄 What got you into that?","Okay, I need the story behind that one 👀","I like your perspective. What happened next?"]
-        else:
-            suggestions=["Your profile has a good vibe — what’s something you’re really into lately?","Quick question: spontaneous plans or perfectly planned ones? 😄","I noticed we might share a few interests. What have you been enjoying lately?"]
-        return {"suggestions":suggestions,"mode":"demo"}
-    try:
-        client=OpenAI(api_key=key)
-        prompt=f"""Create exactly 3 short Instagram conversation suggestions. Tone: {req.tone}.
-Be warm, confident, lightly playful and respectful. No sexual comments, pressure,
-manipulation, negging, fake familiarity, or unsupported assumptions. Do not assume
-gender or relationship status. If no reply has arrived, do not suggest repeated follow-ups.
-Use only the context supplied. Return JSON: {{\"suggestions\":[\"...\",\"...\",\"...\"]}}.
-Profile notes: {req.profile_notes or '(none)'}
-Latest message: {req.latest_message or '(first opener)'}"""
-        res=client.chat.completions.create(model=os.getenv("OPENAI_MODEL","gpt-4o-mini"),
-            messages=[{"role":"system","content":"You are a respectful conversation-writing assistant."},{"role":"user","content":prompt}],
-            response_format={"type":"json_object"},temperature=0.8)
-        items=json.loads(res.choices[0].message.content or "{}").get("suggestions",[])
-        items=[str(x).strip() for x in items if str(x).strip()][:3]
-        if len(items)!=3: raise ValueError("Expected 3 suggestions")
-        return {"suggestions":items,"mode":"live"}
-    except Exception as e:
-        raise HTTPException(status_code=502,detail=f"AI request failed: {type(e).__name__}")
+def suggest(req: SuggestRequest):
+    key = os.getenv("OPENAI_API_KEY")
 
+    if not key:
+        return {
+            "mode": "demo",
+            "suggestions": [
+                "Your profile has a good vibe. What are you into lately?",
+                "Spontaneous plans or perfectly planned ones? 😄",
+                "I think we might share a few interests. What's been keeping you busy?"
+            ]
+        }
+
+    try:
+        client = OpenAI(api_key=key)
+
+        prompt = f"""
+Generate exactly 3 short Instagram conversation suggestions.
+
+Tone: {req.tone}
+Be natural, confident, playful and respectful.
+No pressure, manipulation or sexual comments.
+Do not assume gender or relationship status.
+Use only the supplied context.
+
+Profile notes: {req.profile_notes or '(none)'}
+Latest message: {req.latest_message or '(first opener)'}
+
+Return JSON with a key named suggestions containing 3 strings.
+"""
+
+        response = client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a respectful conversation assistant."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.8
+        )
+
+        data = json.loads(
+            response.choices[0].message.content or "{}"
+        )
+
+        suggestions = [
+            str(x).strip()
+            for x in data.get("suggestions", [])
+            if str(x).strip()
+        ][:3]
+
+        if len(suggestions) != 3:
+            raise ValueError("Expected three suggestions")
+
+        return {"mode": "live", "suggestions": suggestions}
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI request failed: {type(exc).__name__}"
+        )
+        
