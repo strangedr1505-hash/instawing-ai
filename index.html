@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#11111b"><meta name="description" content="Your respectful AI conversation co-pilot">
+<link rel="manifest" href="/manifest.json">
+<title>InstaWing AI</title>
+<style>
+:root{color-scheme:dark;--bg:#101018;--panel:#1b1b28;--muted:#aaa4bd;--accent:#c7a6ff;--mint:#8ce6d1}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0,#28203e 0,transparent 38%),var(--bg);color:#f6f2ff;font:16px system-ui,-apple-system,sans-serif}
+main{max-width:720px;margin:auto;padding:24px 17px 48px}.top{display:flex;align-items:center;justify-content:space-between}.logo{font-size:22px;font-weight:800;letter-spacing:-.5px}.pill{font-size:12px;color:var(--mint);border:1px solid #355d56;border-radius:30px;padding:6px 10px}
+h1{font-size:34px;line-height:1.08;margin:28px 0 8px;letter-spacing:-1px}.sub{color:var(--muted);margin:0 0 22px}.card{background:#1b1b28;border:1px solid #343044;border-radius:19px;padding:17px;margin:14px 0;box-shadow:0 12px 34px #0002}
+label{display:block;font-size:13px;color:#d7d0e5;margin:13px 0 7px}input,textarea{width:100%;background:#11111b;color:#fff;border:1px solid #49435a;border-radius:12px;padding:13px;font:inherit;outline:none}textarea{min-height:86px;resize:vertical}input:focus,textarea:focus{border-color:var(--accent)}
+button{border:0;border-radius:12px;padding:13px 16px;font:inherit;font-weight:700;cursor:pointer}.primary{background:var(--accent);color:#1b1428;width:100%;margin-top:15px}.secondary{background:#302a40;color:#eee7ff}.suggestion{background:#211e30;border:1px solid #39324d;border-radius:14px;padding:14px;margin:10px 0}.suggestion p{margin:6px 0 12px;line-height:1.45}.small{font-size:12px;color:var(--muted);line-height:1.5}.status{font-size:13px;color:var(--mint);min-height:20px;margin:12px 2px}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.row button{flex:1}.tabs{display:flex;gap:8px;margin:18px 0}.tab{background:#242236;color:#d7d0e5;flex:1}.tab.active{background:#c7a6ff;color:#1b1428}.hidden{display:none}.history-item{padding:12px;border-bottom:1px solid #343044}.footer{color:#8e879e;font-size:12px;text-align:center;margin-top:22px}
+</style>
+</head>
+<body><main>
+<div class="top"><div class="logo">✦ InstaWing AI</div><div class="pill">PRIVATE CO-PILOT</div></div>
+<h1>Your AI wingman. 😉</h1><p class="sub">Thoughtful openers. Better replies. Your call, always.</p>
+<div class="tabs"><button class="tab active" data-tab="compose">Create</button><button class="tab" data-tab="history">Saved chats</button></div>
+<section id="compose">
+<div class="card">
+<label for="profile">Instagram profile link (optional — not fetched)</label><input id="profile" placeholder="https://instagram.com/username">
+<label for="notes">Public interests or details you noticed</label><textarea id="notes" placeholder="e.g. live music, books, travel, photography"></textarea>
+<label for="incoming">Latest message (leave blank for a first opener)</label><textarea id="incoming" placeholder="Paste the message you received, if any"></textarea>
+<button class="primary" id="generate">Generate 3 suggestions ✨</button>
+<div class="status" id="status" aria-live="polite"></div>
+</div>
+<div id="results"></div>
+</section>
+<section id="history" class="hidden"><div class="card"><h3>Saved conversation notes</h3><p class="small">Saved only in this browser on this device. Add a short note after a conversation to keep context for next time.</p><label for="chatname">Name or nickname</label><input id="chatname" placeholder="e.g. A. (avoid sensitive details)"><label for="chatnote">Conversation note</label><textarea id="chatnote" placeholder="Shared interest, last topic, or where you left off"></textarea><button class="primary" id="savechat">Save note</button><div id="historylist"></div></div></section>
+<p class="footer">No scraping. No auto-DMs. Review every suggestion and respect boundaries.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
+ document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));
+ $('compose').classList.toggle('hidden',b.dataset.tab!=='compose');$('history').classList.toggle('hidden',b.dataset.tab!=='history');
+}));
+$('generate').addEventListener('click',async()=>{
+ const btn=$('generate');btn.disabled=true;btn.textContent='Thinking…';$('status').textContent='Generating options…';$('results').innerHTML='';
+ try{
+  const r=await fetch('/api/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile_notes:$('notes').value,latest_message:$('incoming').value,tone:'flirty but respectful'})});
+  if(!r.ok)throw new Error((await r.json()).detail||'Request failed');
+  const data=await r.json();$('status').textContent=data.mode==='live'?'Live AI suggestions ready.':'Demo mode: configure your API key on the backend.';
+  data.suggestions.forEach((s,i)=>{
+   const card=document.createElement('div');card.className='suggestion';
+   const label=document.createElement('div');label.className='small';label.textContent='OPTION '+(i+1);
+   const p=document.createElement('p');p.textContent=s;
+   const copy=document.createElement('button');copy.className='secondary';copy.textContent='Copy message';
+   copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(s);copy.textContent='Copied ✓';});
+   card.append(label,p,copy);$('results').append(card);
+  });
+ }catch(e){$('status').textContent='Could not generate: '+e.message;}
+ finally{btn.disabled=false;btn.textContent='Generate 3 suggestions ✨';}
+});
+function getNotes(){try{return JSON.parse(localStorage.getItem('iw_notes')||'[]')}catch{return []}}
+function renderNotes(){const list=$('historylist');list.innerHTML='';getNotes().forEach((n,i)=>{const d=document.createElement('div');d.className='history-item';const strong=document.createElement('strong');strong.textContent=n.name;const p=document.createElement('p');p.className='small';p.textContent=n.note;const del=document.createElement('button');del.className='secondary';del.textContent='Delete';del.onclick=()=>{const a=getNotes();a.splice(i,1);localStorage.setItem('iw_notes',JSON.stringify(a));renderNotes()};d.append(strong,p,del);list.append(d)})}
+$('savechat').onclick=()=>{const name=$('chatname').value.trim(),note=$('chatnote').value.trim();if(!name||!note)return;const a=getNotes();a.unshift({name,note});localStorage.setItem('iw_notes',JSON.stringify(a));$('chatname').value='';$('chatnote').value='';renderNotes()};
+renderNotes();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script></body></html>
